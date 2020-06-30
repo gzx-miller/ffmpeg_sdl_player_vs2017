@@ -43,22 +43,19 @@ static void CopyImageBuf(AVFrame * frame, uint8_t* imgBuf) {
 }
 
 static int DecodePacket(AVCodecContext *dec_ctx, AVPacket *pkt, AVFrame *frame) {
-    char buf[DECODE_BUF_SIZE];
     int ret = avcodec_send_packet(dec_ctx, pkt);
     if (ret < 0) {
         fprintf(stderr, "sending a packet for decoding failed! \n");
         return -1;
     }
 
-    while (ret >= 0) {
-        ret = avcodec_receive_frame(dec_ctx, frame);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            return 0;
-        }
-        else if (ret < 0) {
-            fprintf(stderr, "Error during decoding\n");
-            return -1;
-        }
+    ret = avcodec_receive_frame(dec_ctx, frame);
+    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        return 0;
+    }
+    else if (ret < 0) {
+        fprintf(stderr, "Error during decoding\n");
+        return -1;
     }
     return 1;
 }
@@ -105,27 +102,24 @@ int main(int argc, char* argv[]) {
 
     AVFrame *pFrame = av_frame_alloc();
     AVFrame * pFrameYUV = av_frame_alloc();
-    int bufSize = av_image_get_buffer_size(AV_PIX_FMT_YUV420P, 
-        c->width, c->height, 1);
-    uint8_t *out_buffer = (uint8_t *)av_malloc(bufSize);
     AVPacket* pkt = av_packet_alloc();
     if (!pkt) {
         fprintf(stderr, "alloc packet failed! \n");
     }
 
     av_dump_format(pFormatCtx, 0, filePath, 0);
-    struct SwsContext *img_convert_ctx = sws_getContext(
-        c->width, c->height, c->pix_fmt,
-        c->width, c->height, AV_PIX_FMT_YUV420P, 
-        SWS_BICUBIC, NULL, NULL, NULL);
+    //struct SwsContext *img_convert_ctx = sws_getContext(
+    //    c->width, c->height, c->pix_fmt,
+    //    c->width, c->height, AV_PIX_FMT_YUV420P, 
+    //    SWS_BICUBIC, NULL, NULL, NULL);
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
         fprintf(stderr, "init sdl failed! \n");
         return -1;
     }
 
-    int screen_w = c->width;
-    int screen_h = c->height;
+    int screen_w = 480;//c->width;
+    int screen_h = 272;// c->height;
 
     SDL_Window *screen = SDL_CreateWindow("fd-player",        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
           screen_w, screen_h, SDL_WINDOW_OPENGL);
@@ -137,7 +131,7 @@ int main(int argc, char* argv[]) {
     SDL_Renderer* sdlRenderer = SDL_CreateRenderer(screen, -1, 0);
     SDL_Texture* sdlTexture = SDL_CreateTexture(sdlRenderer,
         SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, 
-        c->width, c->height);
+        screen_w, screen_h);
 
     SDL_Rect sdlRect;
     sdlRect.x = 0;
@@ -174,12 +168,16 @@ int main(int argc, char* argv[]) {
                     int retd = DecodePacket(c, pkt, pFrame);
                     if (retd == 0) continue;
                     if (retd == -1) return -1;
-                    sws_scale(img_convert_ctx, (const unsigned char* const*)pFrame->data, pFrame->linesize, 0, c->height,
-                        pFrameYUV->data, pFrameYUV->linesize);
+                    //sws_scale(img_convert_ctx, (const unsigned char* const*)pFrame->data, pFrame->linesize, 0, c->height,
+                    //    pFrameYUV->data, pFrameYUV->linesize);
+                    //SDL_UpdateYUVTexture(sdlTexture, &sdlRect,
+                    //    pFrameYUV->data[0], pFrameYUV->linesize[0],
+                    //    pFrameYUV->data[1], pFrameYUV->linesize[1],
+                    //    pFrameYUV->data[2], pFrameYUV->linesize[2]);
                     SDL_UpdateYUVTexture(sdlTexture, &sdlRect,
-                        pFrameYUV->data[0], pFrameYUV->linesize[0],
-                        pFrameYUV->data[1], pFrameYUV->linesize[1],
-                        pFrameYUV->data[2], pFrameYUV->linesize[2]);
+                        pFrame->data[0], pFrame->linesize[0],
+                        pFrame->data[1], pFrame->linesize[1],
+                        pFrame->data[2], pFrame->linesize[2]);
                     SDL_RenderClear(sdlRenderer);
                     SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, &sdlRect);
                     SDL_RenderPresent(sdlRenderer);
@@ -190,7 +188,7 @@ int main(int argc, char* argv[]) {
     }
 
     av_parser_close(parser);
-    sws_freeContext(img_convert_ctx);
+    //sws_freeContext(img_convert_ctx);
     SDL_Quit();
     av_frame_free(&pFrameYUV);
     av_frame_free(&pFrame);
