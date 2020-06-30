@@ -18,8 +18,7 @@ extern "C" {
 using namespace std;
 
 const char filePath[] = "a.h265";
-bool GetVideoIndex(AVFormatContext * pFormatCtx, int &i)
-{
+bool GetVideoIndex(AVFormatContext * pFormatCtx, int &i) {
     int videoIndex = -1;
     for (; i < pFormatCtx->nb_streams; i++) {
         if (pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -28,18 +27,6 @@ bool GetVideoIndex(AVFormatContext * pFormatCtx, int &i)
         }
     }
     return videoIndex;
-}
-
-static void CopyImageBuf(AVFrame * frame, uint8_t* imgBuf) {
-    int xsize = frame->width;
-    int ysize = frame->height;
-    int offset = 0;
-    int wrap = frame->linesize[0];
-    uint8_t* buf = frame->data[0];
-    for (int i = 0; i < ysize; i++) {
-        memcpy(imgBuf + offset, buf + i * wrap, xsize);
-        offset += xsize;
-    }
 }
 
 static int DecodePacket(AVCodecContext *dec_ctx, AVPacket *pkt, AVFrame *frame) {
@@ -58,6 +45,36 @@ static int DecodePacket(AVCodecContext *dec_ctx, AVPacket *pkt, AVFrame *frame) 
         return -1;
     }
     return 1;
+}
+
+void InitSDLObject(AVFrame * pFrame, 
+    SDL_Window * &screen, SDL_Renderer* &sdlRenderer, 
+    SDL_Texture* &sdlTexture, SDL_Rect &sdlRect) {
+    screen = SDL_CreateWindow("fd-player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, pFrame->width, pFrame->height, SDL_WINDOW_OPENGL);
+    sdlRenderer = SDL_CreateRenderer(screen, -1, 0);
+    sdlTexture = SDL_CreateTexture(sdlRenderer,
+        SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING,
+        pFrame->width, pFrame->height);
+    sdlRect.x = 0;
+    sdlRect.y = 0;
+    sdlRect.w = pFrame->width;
+    sdlRect.h = pFrame->height;
+}
+
+void ShowFrameInSDL(AVFrame *& pFrame,
+    SDL_Window * &screen, SDL_Texture*& sdlTexture,
+    SDL_Renderer*& sdlRenderer, SDL_Rect& sdlRect) {
+    if (sdlRenderer == nullptr) {
+        InitSDLObject(pFrame, screen, sdlRenderer, sdlTexture, sdlRect);
+    }
+    SDL_UpdateYUVTexture(sdlTexture, &sdlRect,
+        pFrame->data[0], pFrame->linesize[0],
+        pFrame->data[1], pFrame->linesize[1],
+        pFrame->data[2], pFrame->linesize[2]);
+    SDL_RenderClear(sdlRenderer);
+    SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, &sdlRect);
+    SDL_RenderPresent(sdlRenderer);
+    SDL_Delay(40);
 }
 
 int main(int argc, char* argv[]) {
@@ -108,36 +125,16 @@ int main(int argc, char* argv[]) {
     }
 
     av_dump_format(pFormatCtx, 0, filePath, 0);
-    //struct SwsContext *img_convert_ctx = sws_getContext(
-    //    c->width, c->height, c->pix_fmt,
-    //    c->width, c->height, AV_PIX_FMT_YUV420P, 
-    //    SWS_BICUBIC, NULL, NULL, NULL);
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
         fprintf(stderr, "init sdl failed! \n");
         return -1;
     }
 
-    int screen_w = 480;//c->width;
-    int screen_h = 272;// c->height;
-
-    SDL_Window *screen = SDL_CreateWindow("fd-player",        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-          screen_w, screen_h, SDL_WINDOW_OPENGL);
-    if (!screen) {
-        fprintf(stderr, "sdl create window failed! \n");
-        return -1;
-    }
-
-    SDL_Renderer* sdlRenderer = SDL_CreateRenderer(screen, -1, 0);
-    SDL_Texture* sdlTexture = SDL_CreateTexture(sdlRenderer,
-        SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, 
-        screen_w, screen_h);
-
-    SDL_Rect sdlRect;
-    sdlRect.x = 0;
-    sdlRect.y = 0;
-    sdlRect.w = screen_w;
-    sdlRect.h = screen_h;
+    SDL_Window *screen = nullptr;
+    SDL_Renderer* sdlRenderer = nullptr;
+    SDL_Texture* sdlTexture = nullptr;
+    SDL_Rect sdlRect = { 0 };
 
     uint8_t inbuf[INBUF_SIZE + AV_INPUT_BUFFER_PADDING_SIZE];
     memset(inbuf + INBUF_SIZE, 0, AV_INPUT_BUFFER_PADDING_SIZE);
@@ -168,33 +165,17 @@ int main(int argc, char* argv[]) {
                     int retd = DecodePacket(c, pkt, pFrame);
                     if (retd == 0) continue;
                     if (retd == -1) return -1;
-                    //sws_scale(img_convert_ctx, (const unsigned char* const*)pFrame->data, pFrame->linesize, 0, c->height,
-                    //    pFrameYUV->data, pFrameYUV->linesize);
-                    //SDL_UpdateYUVTexture(sdlTexture, &sdlRect,
-                    //    pFrameYUV->data[0], pFrameYUV->linesize[0],
-                    //    pFrameYUV->data[1], pFrameYUV->linesize[1],
-                    //    pFrameYUV->data[2], pFrameYUV->linesize[2]);
-                    SDL_UpdateYUVTexture(sdlTexture, &sdlRect,
-                        pFrame->data[0], pFrame->linesize[0],
-                        pFrame->data[1], pFrame->linesize[1],
-                        pFrame->data[2], pFrame->linesize[2]);
-                    SDL_RenderClear(sdlRenderer);
-                    SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, &sdlRect);
-                    SDL_RenderPresent(sdlRenderer);
-                    SDL_Delay(40);
+                    ShowFrameInSDL(pFrame, screen, sdlTexture, sdlRenderer, sdlRect);
                 }
             }
         }       
     }
-
-    av_parser_close(parser);
-    //sws_freeContext(img_convert_ctx);
     SDL_Quit();
+    av_parser_close(parser);
     av_frame_free(&pFrameYUV);
     av_frame_free(&pFrame);
     avcodec_free_context(&c);
     av_packet_free(&pkt);
     avformat_close_input(&pFormatCtx);
-
     return 0;
 }
