@@ -2,6 +2,7 @@
 #include <iostream>
 
 extern "C" {
+#include "sdl.h"
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libavutil\log.h"
