@@ -14,10 +14,9 @@ extern "C" {
 }
 
 #define INBUF_SIZE 4096
-#define DECODE_BUF_SIZE 1024
 using namespace std;
 
-const char filePath[] = "a.h265";
+const char filePath[] = "a.h265"; //  "640.mp4"; // 
 bool GetVideoIndex(AVFormatContext * pFormatCtx, int &i) {
     int videoIndex = -1;
     for (; i < pFormatCtx->nb_streams; i++) {
@@ -106,13 +105,18 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "parser init failed! \n");
         return -1;
     }
-    AVCodecContext *c = avcodec_alloc_context3(pCodec);
-    if (!c) {
+    AVCodecContext *codecContext = avcodec_alloc_context3(pCodec);
+    if (!codecContext) {
         fprintf(stderr, "alloc context failed! \n");
         return -1;
     }
+    
+    if (avcodec_parameters_to_context(codecContext, pCodecParam) < 0) {
+        fprintf(stderr, "parameters to context failed! \n");
+        return -1;
+    }
 
-    if (avcodec_open2(c, pCodec, NULL) < 0) {
+    if (avcodec_open2(codecContext, pCodec, NULL) < 0) {
         fprintf(stderr, "open decoder failed! \n");
         return -1;
     }
@@ -152,7 +156,7 @@ int main(int argc, char* argv[]) {
         }
         data = inbuf;
         while (data_size > 0) {
-            int ret = av_parser_parse2(parser, c, &pkt->data, &pkt->size,
+            int ret = av_parser_parse2(parser, codecContext, &pkt->data, &pkt->size,
                 data, data_size, AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
             if (ret < 0) {
                 fprintf(stderr, "av parse failed! \n");
@@ -162,7 +166,7 @@ int main(int argc, char* argv[]) {
             data_size -= ret;
             if (pkt->size) {
                 if (pkt->stream_index == videoIndex) {
-                    int retd = DecodePacket(c, pkt, pFrame);
+                    int retd = DecodePacket(codecContext, pkt, pFrame);
                     if (retd == 0) continue;
                     if (retd == -1) return -1;
                     ShowFrameInSDL(pFrame, screen, sdlTexture, sdlRenderer, sdlRect);
@@ -174,7 +178,7 @@ int main(int argc, char* argv[]) {
     av_parser_close(parser);
     av_frame_free(&pFrameYUV);
     av_frame_free(&pFrame);
-    avcodec_free_context(&c);
+    avcodec_free_context(&codecContext);
     av_packet_free(&pkt);
     avformat_close_input(&pFormatCtx);
     return 0;
