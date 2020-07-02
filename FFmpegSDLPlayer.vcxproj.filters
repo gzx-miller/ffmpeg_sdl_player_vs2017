@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="FFmpegTest.cpp">
+    <ClCompile Include="FFmpegSDLPlayer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
